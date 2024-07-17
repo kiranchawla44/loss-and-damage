@@ -1,0 +1,96 @@
+ # Load required packages.
+using CSVFiles, DataFrames, Mimi, MimiRICE2010, MimiNICE, Statistics
+
+# Load helper functions and revenue recycling components being added to the NICE model.
+include("helper_functions.jl")
+include(joinpath("revenue_recycling_components", "nice_revenue_recycle_component_time_varying.jl"))
+include(joinpath("revenue_recycling_components", "rice_equivalent_welfare_component.jl"))
+
+#-----------------------#
+# ----- Load Data ----- #
+#-----------------------#
+
+# Load studies used to calculate elasticities.
+elasticity_studies = DataFrame(load(joinpath(@__DIR__, "..", "data", "elasticity_study_data.csv")))
+
+# Load updated UN population projections and convert units to millions of people.
+un_population_data = Matrix(DataFrame(load(joinpath(@__DIR__, "..", "data", "UN_medium_population_scenario.csv"), skiplines_begin=3))[:, 3:end]) ./ 1000
+
+# Load quintile income distribution data that remains fixed over time (these shares are an update from the original NICE income distributions).
+consumption_distribution_raw = DataFrame(load(joinpath(@__DIR__, "..", "data", "constant_quintile_distributions_consumption.csv")))
+
+# Clean up and organize time-varying income distribution data into required NICE format (time × regions × quintiles).
+consumption_distributions = get_quintile_income_shares(consumption_distribution_raw)
+
+regionalLandDpayment_fixed = Matrix(DataFrame(load(joinpath(@__DIR__, "..", "data", "regionalLandDpayment.csv"), skiplines_begin=3))[:, 3:end]) ./ 1e1
+
+
+# -------------------------------------------------
+# -------------------------------------------------
+# Create function to add revenue recyling to NICE.
+# -------------------------------------------------
+# -------------------------------------------------
+
+function create_nice_recycle(;slope_type::Symbol=:central, percentile::Float64=0.90)
+
+    # Initialize an instance of NICE to build in revenue recycling.
+    nice_rr = MimiNICE.create_nice()
+
+    # Get number of timesteps across model time horizon.
+    n_steps = length(dim_keys(nice_rr, :time))
+
+    # Add in NICE revenue recycling component.
+    delete!(nice_rr, :nice_welfare)
+    add_comp!(nice_rr, nice_recycle, after = :nice_neteconomy)
+    add_comp!(nice_rr, rice_equivalent_welfare_component, after = :nice_recycle)
+
+    #-------------------------------------#
+    # ----- Assign Model Parameters ----- #
+    #-------------------------------------#
+
+    # First, perform a meta-regression based on study results to calculate elasticity vs. ln gdp per capita relationship.
+    meta_intercept, meta_slope = meta_regression(elasticity_studies, slope_type=slope_type, percentile=percentile)
+
+    # Update parameters common to multiple components or that already have external Mimi parameters defined.
+    update_param!(nice_rr, :l, un_population_data)
+    update_param!(nice_rr, :quintile_pop, un_population_data ./ 5)
+    
+
+    # Set values for additional NICE and recycling parameters.
+    set_param!(nice_rr, :nice_recycle, :min_study_gdp, minimum(elasticity_studies.pcGDP))
+    set_param!(nice_rr, :nice_recycle, :max_study_gdp, maximum(elasticity_studies.pcGDP))
+    set_param!(nice_rr, :nice_recycle, :elasticity_intercept, meta_intercept)
+    set_param!(nice_rr, :nice_recycle, :elasticity_slope, meta_slope)
+    set_param!(nice_rr, :nice_recycle, :regional_population, un_population_data)
+    set_param!(nice_rr, :nice_recycle, :quintile_income_shares, consumption_distributions)
+    set_param!(nice_rr, :nice_recycle, :damage_elasticity, 1.0)
+    set_param!(nice_rr, :nice_recycle, :recycle_share, ones(12,5).*0.2)
+    set_param!(nice_rr, :nice_recycle, :global_carbon_tax, zeros(n_steps))
+    set_param!(nice_rr, :nice_recycle, :lost_revenue_share, 0.0)
+    set_param!(nice_rr, :nice_recycle, :global_recycle_share, zeros(12))
+    set_param!(nice_rr, :nice_recycle, :savings_share,   ones(n_steps, 12) .* 0.2585)
+    set_param!(nice_rr, :nice_recycle, :regionalLandDpayment_fixed,   regionalLandDpayment_fixed)
+    
+    # Set RICE equivalent welfare component parameters.
+    set_param!(nice_rr, :rice_equivalent_welfare_component, :rho_welfare, 0.015)
+    set_param!(nice_rr, :rice_equivalent_welfare_component, :eta_welfare, 1.5)
+    set_param!(nice_rr, :rice_equivalent_welfare_component, :regional_population_welfare, un_population_data)
+
+    # Create parameter connections (:component => :parameter).
+    connect_param!(nice_rr, :nice_recycle => :industrial_emissions, :emissions       => :EIND)
+    connect_param!(nice_rr, :nice_recycle => :DAMFRAC,              :damages         => :DAMFRAC)
+    #removing parameters from nice_neteconomy that are not being calculated in the recycling module
+    #connect_param!(nice_rr, :nice_recycle => :ABATEFRAC,            :nice_neteconomy => :ABATEFRAC)
+    #connect_param!(nice_rr, :nice_recycle => :Y,                    :nice_neteconomy => :Y)
+    #connect_param!(nice_rr, :nice_recycle => :CPC,                  :nice_neteconomy => :CPC)
+    connect_param!(nice_rr, :rice_equivalent_welfare_component => :C,           :nice_recycle    => :C)
+    #linking net economy pieces to recycling module directly
+    connect_param!(nice_rr, :nice_recycle => :DAMAGES,              :damages         => :DAMAGES)    
+    connect_param!(nice_rr, :grosseconomy,    :I,          :nice_recycle, :I)
+    connect_param!(nice_rr, :nice_recycle, :YGROSS,     :grosseconomy,    :YGROSS)
+    connect_param!(nice_rr, :nice_recycle, :ABATECOST,  :emissions,       :ABATECOST)
+
+
+    # Return NICE model with revenue recycling.
+    return nice_rr
+end
