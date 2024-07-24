@@ -5,6 +5,8 @@ using CSVFiles, DataFrames, Mimi, MimiRICE2010, MimiNICE, Statistics
 include("helper_functions.jl")
 include(joinpath("revenue_recycling_components", "nice_revenue_recycle_component_time_varying.jl"))
 include(joinpath("revenue_recycling_components", "rice_equivalent_welfare_component.jl"))
+include(joinpath("revenue_recycling_components", "modified_neteconomy.jl"))
+        
 
 #-----------------------#
 # ----- Load Data ----- #
@@ -41,7 +43,9 @@ function create_nice_recycle(;slope_type::Symbol=:central, percentile::Float64=0
 
     # Add in NICE revenue recycling component.
     delete!(nice_rr, :nice_welfare)
-    add_comp!(nice_rr, nice_recycle, after = :nice_neteconomy)
+    delete!(nice_rr, :nice_neteconomy)
+    add_comp!(nice_rr, nice_recycle, after = :damages)
+    add_comp!(nice_rr, :modified_neteconomy, after = :nice_recycle)
     add_comp!(nice_rr, rice_equivalent_welfare_component, after = :nice_recycle)
 
     #-------------------------------------#

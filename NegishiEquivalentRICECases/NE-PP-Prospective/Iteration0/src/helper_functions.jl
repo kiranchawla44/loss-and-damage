@@ -645,6 +645,7 @@ function save_nice_recycle_results(m_policy::Model, m_bau::Model, opt_tax::Array
     save(joinpath(regional_path, "climate_damages_by_region.csv"), DataFrame(m_policy[:nice_recycle, :DAMAGES], :auto))
     #save loss and damages file
     save(joinpath(regional_path, "regionalLandDpayment.csv"), DataFrame(m_policy[:nice_recycle, :regionalLandDpayment], :auto))
+    save(joinpath(regional_path, "regionalLandDpayment_fixed.csv"), DataFrame(m_policy[:nice_recycle, :regionalLandDpayment_fixed], :auto))
     
 
     # Save Quintile Output.

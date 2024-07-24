@@ -54,7 +54,7 @@
     I               = Variable(index=[time, regions])            # Investment (trillions 2005 USD yr⁻¹).
     C               = Variable(index=[time, regions])            # Regional consumption (trillions 2005 US dollars yr⁻¹).
     CPC             = Variable(index=[time, regions])            # Regional per capita consumption (thousands 2005 USD yr⁻¹)
-    Y               = Variable(index=[time, regions])            # Gross world product net of abatement and damages (trillions 2005 USD yr⁻¹).
+    Y               = Variable(index=[time, regions])            # Total economic output net of abatement and damages (trillions 2005 USD yr⁻¹).
     ABATEFRAC       = Variable(index=[time, regions])            # Cost of CO₂ emission reductions as share of gross economic output.
     #L&D calc components
     emissionsshare  = Variable(index=[time, regions])
@@ -141,11 +141,11 @@
             for q in d.quintiles
 
                 # Calculate pre-damage, pre-abatement cost quintile consumption.
-                v.qc_base[t,r,q] = temp_C * p.quintile_income_shares[t,r,q]
+                v.qc_base[t,r,q] = temp_C * p.quintile_income_shares[t,r,q] * 5
 
                 # Calculate post-damage, post-abatement cost per capita quintile consumption (bounded below to ensure consumptions don't collapse to zero or go negative).
                 # Note, this differs from standard NICE equation because quintile CO₂ abatement cost and climate damage shares can now vary over time.
-                v.qc_post_damage_abatement[t,r,q] = max(v.qc_base[t,r,q] - (temp_damagespc * v.damage_dist[t,r,q]) - (temp_abatementcost_pc * v.abatement_cost_dist[t,r,q]), 1e-8)
+                v.qc_post_damage_abatement[t,r,q] = max(v.qc_base[t,r,q] - (temp_damagespc * v.damage_dist[t,r,q] * 5) - (temp_abatementcost_pc * v.abatement_cost_dist[t,r,q]) * 5, 1e-8)
 
                 # Subtract tax revenue from each quintile based on quintile CO₂ tax burden distributions.
                 # Note, per capita tax revenue and consumption should both be in 1000s dollars/person.
