@@ -22,7 +22,7 @@ consumption_distribution_raw = DataFrame(load(joinpath(@__DIR__, "..", "data", "
 # Clean up and organize time-varying income distribution data into required NICE format (time × regions × quintiles).
 consumption_distributions = get_quintile_income_shares(consumption_distribution_raw)
 
-regionalLandDpayment_fixed = Matrix(DataFrame(load(joinpath(@__DIR__, "..", "data", "regionalLandDpayment.csv"), skiplines_begin=3))[:, 3:end]) ./ 1e1
+regionalLandDpayment_fixed = Matrix(DataFrame(load(joinpath(@__DIR__, "..", "data", "regionalLandDpayment.csv"), skiplines_begin=3))[:, 3:end]) ./ 1
 
 
 # -------------------------------------------------
